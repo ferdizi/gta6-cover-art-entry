@@ -1,4 +1,7 @@
 // Last Exit Paradise — a GTA 6-style cover art maker for gta6-cover-art-01.
+// Rebuild note (2026-11-21, this session): previous build could not be submitted
+// (its recorder never connected); this rebuild was written fresh in this session
+// under a new Node 24 recording, same spec, same title.
 // The app (app/) turns a photo + caption into a multi-panel poster cover with
 // a striped-chrome title, a coastal route line joining the panels, role tags,
 // grades and three export sizes; the screenshots in screenshots/ are the app's

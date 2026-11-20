@@ -1,32 +1,68 @@
-// Fixed scenes for screenshots: ?shot=editor shows the page with a sample photo;
-// ?shot=cover shows the cover alone at the requested export size.
-// window.__shotReady is set once the cover has been painted.
-export async function runShot(shot, query, api) {
-  const photo = query.get('photo') ?? 'boulevard';
-  const other = photo === 'boulevard' ? 'pier' : 'boulevard';
-  const caption = query.get('caption');
-  if (caption) {
-    const words = caption.trim().toUpperCase().split(/\s+/);
-    if (words.length > 1) {
-      const half = Math.ceil(words.length / 2);
-      api.setState({ title: words.slice(0, half).join(' '), title2: words.slice(half).join(' ') });
-    } else {
-      api.setState({ title: caption.trim().toUpperCase(), title2: '' });
-    }
-  }
-  if (query.get('title')) api.setState({ title: query.get('title'), title2: query.get('title2') ?? '' });
-  if (query.get('subtitle')) api.setState({ subtitle: query.get('subtitle') });
-  if (query.get('tagline')) api.setState({ tagline: query.get('tagline') });
-  if (query.get('layout')) api.setState({ layout: query.get('layout') });
-  if (query.get('grade')) api.setState({ grade: query.get('grade') });
-  if (shot === 'cover') {
-    document.body.classList.add('shot-cover');
-    api.setState({ size: query.get('size') || 'landscape' });
-  }
-  await api.loadPhoto(0, `samples/${photo}.jpg`, `${photo}.jpg (sample)`);
-  await api.loadPhoto(1, `samples/${other}.jpg`, `${other}.jpg (sample)`);
-  await api.redraw();
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    window.__shotReady = true;
-  }));
+// Last Exit Paradise — deterministic shot views (rebuild, 2026-11-21).
+// ?shot=cover&size=&photo=&caption=&title=&subtitle=&tagline=&layout=&grade=
+// ?shot=editor — renders the editor with both samples loaded.
+// Sets window.__shotReady when the view has finished rendering.
+import { state, photos, loadImage, guessFace, render } from './main.js';
+import { exportCover } from './cover.js';
+
+function param(name, fallback) {
+  const v = new URLSearchParams(location.search).get(name);
+  return v === null || v === '' ? fallback : v;
 }
+
+async function loadPhoto(name) {
+  if (!name) return null;
+  const file = name.includes('.') ? name : `${name}.jpg`;
+  return loadImage(`samples/${file}`);
+}
+
+async function shotCover() {
+  document.body.classList.add('shot-cover');
+  const size = param('size', 'landscape');
+  const photoName = param('photo', 'boulevard');
+  const caption = param('caption', '');
+  state.size = ['square', 'portrait', 'landscape'].includes(size) ? size : 'landscape';
+  state.layout = param('layout', state.layout);
+  state.grade = param('grade', state.grade);
+  if (param('title', '')) state.title = param('title', '').replace(/\\n/g, '\n');
+  if (param('subtitle', '')) state.subtitle = param('subtitle', '');
+  if (param('tagline', '')) state.tagline = param('tagline', '');
+  if (caption) state.subtitle = caption;
+  try {
+    const a = await loadPhoto(photoName);
+    const b = await loadPhoto(photoName === 'boulevard' ? 'pier' : 'boulevard');
+    photos.A = a; photos.B = b;
+    guessFace('A'); guessFace('B');
+  } catch { /* samples are bundled; a miss still renders the gradient fallback */ }
+  await document.fonts.ready;
+  const canvas = exportCover(state.size, photos, state);
+  const stage = document.getElementById('shotStage');
+  stage.innerHTML = '';
+  stage.appendChild(canvas);
+  canvas.style.maxWidth = '100%';
+  canvas.style.maxHeight = '100vh';
+  window.__shotReady = true;
+}
+
+async function shotEditor() {
+  const photoName = param('photo', 'boulevard');
+  state.layout = param('layout', state.layout);
+  state.grade = param('grade', state.grade);
+  try {
+    photos.A = await loadPhoto(photoName);
+    photos.B = await loadPhoto(photoName === 'boulevard' ? 'pier' : 'boulevard');
+    guessFace('A'); guessFace('B');
+  } catch { /* fall through */ }
+  await document.fonts.ready;
+  render();
+  window.__shotReady = true;
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const { initEditor } = await import('./main.js');
+  const shot = param('shot', '');
+  if (shot === 'cover') { await shotCover(); return; }
+  initEditor();
+  if (shot === 'editor') { await shotEditor(); }
+  else { window.__shotReady = true; }
+});

@@ -4,78 +4,81 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Last Exit Paradise — GTA 6 Cover Art Maker</title>
-<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="app">
-  <section class="controls" aria-label="Cover editor">
-    <h1>Last Exit Paradise</h1>
-    <p class="tag">Turn a photo into GTA-style multi-panel cover art. Pick a photo, set the words, export the PNG.</p>
-
-    <fieldset>
-      <legend>Photos</legend>
-      <div class="photo-row">
-        <img id="thumbA" class="thumb" alt="Photo A preview" hidden>
-        <div>
-          <label class="file-label">Photo A <input id="photoA" type="file" accept="image/*"></label>
-          <button id="sampleA" type="button" class="mini">Use sample: boulevard</button>
-          <p id="photoAName" class="file-name"></p>
-        </div>
-      </div>
-      <div class="photo-row">
-        <img id="thumbB" class="thumb" alt="Photo B preview" hidden>
-        <div>
-          <label class="file-label">Photo B <input id="photoB" type="file" accept="image/*"></label>
-          <button id="sampleB" type="button" class="mini">Use sample: pier</button>
-          <p id="photoBName" class="file-name"></p>
-        </div>
-      </div>
-      <p class="hint">Photos stay on your machine — nothing is uploaded.</p>
-    </fieldset>
-
-    <fieldset>
-      <legend>Words</legend>
-      <label>Title line 1 <input id="title" type="text" maxlength="24" value="LAST EXIT"></label>
-      <label>Title line 2 <input id="title2" type="text" maxlength="24" value="PARADISE"></label>
-      <label>Script subtitle <input id="subtitle" type="text" maxlength="32" value="Paid in Sunsets"></label>
-      <label>Tagline ribbon <input id="tagline" type="text" maxlength="48" value="ONE ROAD · FOUR ALIBIS · NO WAY BACK"></label>
-      <label>Press quote <input id="quote" type="text" maxlength="48" value="THE HOTTEST RIDE OF THE YEAR"></label>
-      <label>Quote source <input id="quoteSource" type="text" maxlength="28" value="GOLDEN MILE GAZETTE"></label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Layout</legend>
-      <div id="layouts" class="chips" role="group" aria-label="Panel layout"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Colour grade</legend>
-      <div id="grades" class="swatches" role="group" aria-label="Colour grade"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Preview size</legend>
-      <div id="sizes" class="chips" role="group" aria-label="Export size"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Panels — click the preview to move a panel's focus</legend>
-      <div id="panels"></div>
-    </fieldset>
-
-    <div class="exports">
-      <button id="exportSquare" type="button">Export 1080 × 1080</button>
-      <button id="exportPortrait" type="button">Export 1080 × 1350</button>
-      <button id="exportLandscape" type="button" class="primary">Export 1920 × 1080</button>
-      <button id="shuffle" type="button" class="ghost">Surprise me</button>
-    </div>
-    <p id="status" role="status"></p>
+<header class="top">
+  <div>
+    <h1>LAST EXIT <span>PARADISE</span></h1>
+    <p class="sub">Golden Mile Cover Studio — make your own GTA 6-style poster cover</p>
+  </div>
+  <div class="top-right"><span class="badge">VOL. 1</span><span class="stars">★★★★★</span></div>
+</header>
+<main class="layout">
+  <section class="preview-col">
+    <div class="canvas-wrap"><canvas id="cover" width="1920" height="1080"></canvas></div>
+    <p id="selectedPanel" class="hint">Panel 1 of 5 — click the cover to move its focal point</p>
+    <p id="focalReadout" class="hint dim">focal 0.50 · 0.42 · photo A</p>
   </section>
-  <section class="preview" aria-label="Live cover preview">
-    <canvas id="cover" width="1920" height="1080" aria-label="The cover"></canvas>
-    <p class="hint">Live preview — click any panel to set where its photo focuses. The gold route line joins the panels in story order.</p>
-  </section>
+  <aside class="controls">
+    <section class="card">
+      <h2>Photos</h2>
+      <label class="field">Photo A <input id="uploadA" type="file" accept="image/*"></label>
+      <label class="field">Photo B <input id="uploadB" type="file" accept="image/*"></label>
+      <div class="row">
+        <button id="sampleA" type="button">A: Boulevard</button>
+        <button id="sampleA2" type="button">A: Pier</button>
+        <button id="sampleB" type="button">B: Pier</button>
+        <button id="sampleB2" type="button">B: Boulevard</button>
+      </div>
+      <p class="note">Upload your own photo, or use the AI-made samples. Faces get a first-guess focal point automatically.</p>
+    </section>
+    <section class="card">
+      <h2>Cover</h2>
+      <label class="field">Title <textarea id="title" rows="2">LAST EXIT
+PARADISE</textarea></label>
+      <label class="field">Subtitle <input id="subtitle" type="text" value="Paid in Sunsets"></label>
+      <label class="field">Tagline <input id="tagline" type="text" value="ONE ROAD · FOUR ALIBIS · NO WAY BACK"></label>
+      <div class="grid3">
+        <label class="field">Layout
+          <select id="layout">
+            <option value="coast">Coast</option><option value="strip">Strip</option>
+            <option value="grid">Grid</option><option value="duo">Duo</option>
+            <option value="mosaic">Mosaic</option><option value="cascade">Cascade</option>
+          </select></label>
+        <label class="field">Grade
+          <select id="grade">
+            <option value="sunset">Sunset</option><option value="neon">Neon</option>
+            <option value="golden">Golden</option><option value="vice">Vice</option>
+            <option value="teal">Teal</option><option value="noir">Noir</option>
+          </select></label>
+        <label class="field">Size
+          <select id="size">
+            <option value="landscape">1920 × 1080</option>
+            <option value="square">1080 × 1080</option>
+            <option value="portrait">1080 × 1350</option>
+          </select></label>
+      </div>
+      <button id="surprise" type="button" class="primary">Surprise me</button>
+    </section>
+    <section class="card">
+      <h2>Panels</h2>
+      <div id="panelList"></div>
+      <p class="note">Click a panel, then click the cover to move its focal point. Roles edit in place.</p>
+    </section>
+    <section class="card">
+      <h2>Export PNG</h2>
+      <div class="row">
+        <button type="button" data-export="square">Square</button>
+        <button type="button" data-export="portrait">Portrait</button>
+        <button type="button" data-export="landscape">Landscape</button>
+      </div>
+      <p class="note">Each size reflows the panels and title — never just a crop.</p>
+    </section>
+  </aside>
 </main>
-<script type="module" src="./src/main.js"></script>
+<div id="shotStage"></div>
+<footer class="foot">A GOLDEN MILE PICTURE · IN ASSOCIATION WITH PALMINE STUDIOS · Last Exit Paradise — own art, OFL fonts, AI-made sample photos.</footer>
+<script type="module" src="src/shots.js"></script>
 </body>
 </html>
