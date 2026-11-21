@@ -1,22 +1,15 @@
-// Last Exit Paradise — deterministic shot views (rebuild, 2026-11-21).
+// Last Exit Paradise — deterministic shot views (round-3 rebuild, 2026-11-21).
 // ?shot=cover&size=&photo=&caption=&title=&subtitle=&tagline=&layout=&grade=
 // ?shot=editor — renders the editor with both samples loaded.
 // Sets window.__shotReady when the view has finished rendering.
-import { state, photos, loadImage, guessFace, render } from './main.js';
-import { exportCover } from './cover.js';
-
 function param(name, fallback) {
   const v = new URLSearchParams(location.search).get(name);
   return v === null || v === '' ? fallback : v;
 }
 
-async function loadPhoto(name) {
-  if (!name) return null;
-  const file = name.includes('.') ? name : `${name}.jpg`;
-  return loadImage(`samples/${file}`);
-}
-
-async function shotCover() {
+async function shotCover(mod) {
+  const { state, photos, loadImage, guessFace } = mod;
+  const { exportCover } = await import('./cover.js');
   document.body.classList.add('shot-cover');
   const size = param('size', 'landscape');
   const photoName = param('photo', 'boulevard');
@@ -29,12 +22,16 @@ async function shotCover() {
   if (param('tagline', '')) state.tagline = param('tagline', '');
   if (caption) state.subtitle = caption;
   try {
-    const a = await loadPhoto(photoName);
-    const b = await loadPhoto(photoName === 'boulevard' ? 'pier' : 'boulevard');
-    photos.A = a; photos.B = b;
-    guessFace('A'); guessFace('B');
+    const file = photoName.includes('.') ? photoName : `${photoName}.jpg`;
+    const other = photoName === 'boulevard' ? 'pier.jpg' : 'boulevard.jpg';
+    photos.A = await loadImage(`samples/${file}`);
+    photos.B = await loadImage(`samples/${other}`);
+    guessFace('A');
+    guessFace('B');
   } catch { /* samples are bundled; a miss still renders the gradient fallback */ }
-  await document.fonts.ready;
+  try {
+    await document.fonts.ready;
+  } catch { /* local fonts; a miss still renders */ }
   const canvas = exportCover(state.size, photos, state);
   const stage = document.getElementById('shotStage');
   stage.innerHTML = '';
@@ -44,25 +41,35 @@ async function shotCover() {
   window.__shotReady = true;
 }
 
-async function shotEditor() {
+async function shotEditor(mod) {
+  const { photos, loadImage, guessFace, render } = mod;
   const photoName = param('photo', 'boulevard');
-  state.layout = param('layout', state.layout);
-  state.grade = param('grade', state.grade);
   try {
-    photos.A = await loadPhoto(photoName);
-    photos.B = await loadPhoto(photoName === 'boulevard' ? 'pier' : 'boulevard');
-    guessFace('A'); guessFace('B');
+    const file = photoName.includes('.') ? photoName : `${photoName}.jpg`;
+    const other = photoName === 'boulevard' ? 'pier.jpg' : 'boulevard.jpg';
+    photos.A = await loadImage(`samples/${file}`);
+    photos.B = await loadImage(`samples/${other}`);
+    guessFace('A');
+    guessFace('B');
   } catch { /* fall through */ }
-  await document.fonts.ready;
+  try {
+    await document.fonts.ready;
+  } catch { /* local fonts; a miss still renders */ }
   render();
   window.__shotReady = true;
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-  const { initEditor } = await import('./main.js');
+  const mod = await import('./main.js');
   const shot = param('shot', '');
-  if (shot === 'cover') { await shotCover(); return; }
-  initEditor();
-  if (shot === 'editor') { await shotEditor(); }
-  else { window.__shotReady = true; }
+  if (shot === 'cover') {
+    await shotCover(mod);
+    return;
+  }
+  await mod.initEditor();
+  if (shot === 'editor') {
+    await shotEditor(mod);
+  } else {
+    window.__shotReady = true;
+  }
 });

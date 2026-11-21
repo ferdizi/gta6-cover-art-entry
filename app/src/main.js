@@ -1,9 +1,9 @@
-// Last Exit Paradise — editor (rebuild, 2026-11-21).
+// Last Exit Paradise — editor (round-3 rebuild, 2026-11-21).
 // Dark sunset editor: two photo slots (upload or AI-made samples), click the
 // preview to move a panel's focal point, skin-tone centroid first-guess face
 // finder on upload, editable roles, layout / grade / size pickers, PNG export
 // in three sizes, and a "Surprise me" randomiser.
-import { SIZES, LAYOUTS, GRADES, DEFAULT_ROLES, defaultState, drawCover, exportCover, layoutPanels } from './cover.js';
+import { SIZES, LAYOUTS, GRADES, defaultState, drawCover, exportCover, layoutPanels } from './cover.js';
 
 export const state = defaultState();
 export const photos = { A: null, B: null };
@@ -15,19 +15,19 @@ export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error(`cannot load ${src}`));
     img.src = src;
   });
 }
 
 export async function loadSample(slot, name) {
-  photos[slot] = await loadImage(`samples/${name}`);
+  photos[slot] = await loadImage(`samples/${name}.jpg`);
   guessFace(slot);
   render();
 }
 
-function isSkin(r, g, b) {
-  return r > 95 && r > g && r > b && (r - g) > 12 && (r - g) < 90 && (r - b) > 15 && Math.abs(r - g) > 8;
+function isSkinPixel(r, g, b) {
+  return r > 90 && g > 40 && b > 20 && r > g + 15 && r > b + 20 && r - g < 80;
 }
 
 // First-guess face finder: centroid of skin-toned pixels, per photo slot.
@@ -37,156 +37,244 @@ export function guessFace(slot) {
   const img = photos[slot];
   if (!img) return null;
   try {
-    const c = document.createElement('canvas');
-    const w = 120, h = Math.max(40, Math.round((120 * img.naturalHeight) / img.naturalWidth));
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    const d = ctx.getImageData(0, 0, w, h).data;
-    let sx = 0, sy = 0, n = 0;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      if (isSkin(d[i], d[i + 1], d[i + 2])) { sx += x; sy += y; n++; }
+    const probe = document.createElement('canvas');
+    const pw = 64;
+    const ph = Math.max(8, Math.round((64 * img.naturalHeight) / img.naturalWidth));
+    probe.width = pw;
+    probe.height = ph;
+    const pctx = probe.getContext('2d');
+    pctx.drawImage(img, 0, 0, pw, ph);
+    const data = pctx.getImageData(0, 0, pw, ph).data;
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (isSkinPixel(data[i], data[i + 1], data[i + 2])) {
+        sx += (i / 4) % pw;
+        sy += Math.floor(i / 4 / pw);
+        n++;
+      }
     }
     if (n < 20) return null;
-    const fx = sx / n / w, fy = sy / n / h;
-    state.panels.forEach((p) => { if (p.photo === slot) { p.fx = fx; p.fy = Math.min(0.7, Math.max(0.2, fy)); } });
+    const fx = Math.min(0.95, Math.max(0.05, sx / n / pw));
+    const fy = Math.min(0.95, Math.max(0.05, sy / n / ph));
+    state.panels.forEach((p) => {
+      if (p.photo === slot) {
+        p.fx = fx;
+        p.fy = fy;
+      }
+    });
     return { fx, fy };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-export function render() {
-  const canvas = $('cover');
-  if (!canvas) return;
-  const size = SIZES[state.size] || SIZES.landscape;
-  if (canvas.width !== size.w || canvas.height !== size.h) { canvas.width = size.w; canvas.height = size.h; }
-  drawCover(canvas, photos, state);
-  renderPanelList();
-  syncControls();
+// Inverse cover-fit: given a click inside a panel, work out which point of
+// the source photo sits under it, and move that panel's focal point there.
+function clickToFocal(img, rect, panel, cx, cy) {
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const scale = Math.max(rect.w / iw, rect.h / ih);
+  const sw = rect.w / scale;
+  const sh = rect.h / scale;
+  const sx = Math.max(0, Math.min(iw - sw, panel.fx * iw - sw / 2));
+  const sy = Math.max(0, Math.min(ih - sh, panel.fy * ih - sh / 2));
+  const srcX = sx + (cx / rect.w) * sw;
+  const srcY = sy + (cy / rect.h) * sh;
+  return {
+    fx: Math.min(0.95, Math.max(0.05, srcX / iw)),
+    fy: Math.min(0.95, Math.max(0.05, srcY / ih)),
+  };
 }
 
-function syncControls() {
-  const set = (id, v) => { const el = $(id); if (el && el.value !== v) el.value = v; };
-  set('layout', state.layout); set('grade', state.grade); set('size', state.size);
-  set('title', state.title); set('subtitle', state.subtitle); set('tagline', state.tagline);
-  const sel = $('selectedPanel'); if (sel) sel.textContent = `Panel ${selectedPanel + 1} of 5 — click the cover to move its focal point`;
-  const foc = $('focalReadout');
-  if (foc) { const p = state.panels[selectedPanel]; foc.textContent = `focal ${p.fx.toFixed(2)} · ${p.fy.toFixed(2)} · photo ${p.photo}`; }
+function pointInPanel(x, y, r) {
+  if (y < r.y || y > r.y + r.h) return false;
+  const t = (y - r.y) / r.h;
+  const left = r.x + r.slant * (1 - t);
+  const right = r.x + r.w + r.slant * (1 - t);
+  return x >= left && x <= right;
 }
 
-function renderPanelList() {
+function buildPicker(el, items, current, onPick) {
+  el.innerHTML = '';
+  items.forEach((item) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = item.label;
+    if (item.value === current) b.classList.add('on');
+    b.addEventListener('click', () => {
+      onPick(item.value);
+      el.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+    });
+    el.appendChild(b);
+  });
+}
+
+function buildPanelList() {
   const list = $('panelList');
-  if (!list) return;
   list.innerHTML = '';
-  state.panels.forEach((p, i) => {
+  state.panels.forEach((panel, i) => {
     const row = document.createElement('div');
     row.className = 'panel-row' + (i === selectedPanel ? ' selected' : '');
-    row.innerHTML = `<button class="panel-pick" type="button">#${i + 1}</button>
-      <input class="role-input" type="text" value="${(state.roles[i % state.roles.length] || '').replace(/"/g, '&quot;')}" aria-label="Role for panel ${i + 1}">
-      <select class="photo-select" aria-label="Photo for panel ${i + 1}">
-        <option value="A"${p.photo === 'A' ? ' selected' : ''}>Photo A</option>
-        <option value="B"${p.photo === 'B' ? ' selected' : ''}>Photo B</option>
-      </select>
-      <span class="focal">focal ${p.fx.toFixed(2)} · ${p.fy.toFixed(2)}</span>`;
-    row.querySelector('.panel-pick').addEventListener('click', () => { selectedPanel = i; render(); });
-    row.querySelector('.role-input').addEventListener('input', (e) => { state.roles[i % state.roles.length] = e.target.value.toUpperCase(); render(); });
-    row.querySelector('.photo-select').addEventListener('change', (e) => { p.photo = e.target.value; render(); });
+    row.dataset.index = i;
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.textContent = `#${i + 1}`;
+    pick.addEventListener('click', () => {
+      selectedPanel = i;
+      render();
+    });
+    const role = document.createElement('input');
+    role.className = 'role-input';
+    role.value = panel.role;
+    role.maxLength = 18;
+    role.addEventListener('input', () => {
+      panel.role = role.value.toUpperCase();
+      render();
+    });
+    const photo = document.createElement('select');
+    photo.className = 'photo-select';
+    ['A', 'B'].forEach((slot) => {
+      const opt = document.createElement('option');
+      opt.value = slot;
+      opt.textContent = `Photo ${slot}`;
+      if (panel.photo === slot) opt.selected = true;
+      photo.appendChild(opt);
+    });
+    photo.addEventListener('change', () => {
+      panel.photo = photo.value;
+      render();
+    });
+    const focal = document.createElement('div');
+    focal.className = 'panel-focal';
+    focal.textContent = `focal ${panel.fx.toFixed(2)} · ${panel.fy.toFixed(2)} · photo ${panel.photo}`;
+    row.append(pick, role, photo, focal);
     list.appendChild(row);
   });
 }
 
-// Click preview -> move the selected panel's focal point (inverse cover-fit map).
-export function onPreviewClick(ev) {
-  const canvas = $('cover');
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  const cx = ((ev.clientX - rect.left) / rect.width) * canvas.width;
-  const cy = ((ev.clientY - rect.top) / rect.height) * canvas.height;
-  const panels = layoutPanels(state.layout, canvas.width, canvas.height);
-  let hit = -1;
-  panels.forEach((p, i) => { if (cx >= p.x && cx <= p.x + p.w && cy >= p.y && cy <= p.y + p.h) hit = i; });
-  if (hit < 0) return;
-  selectedPanel = hit;
-  const p = panels[hit];
-  const spec = state.panels[hit];
-  const img = photos[spec.photo];
-  if (img) {
-    // inverse of the cover-fit crop used in cover.js
-    const scale = Math.max(p.w / img.naturalWidth, p.h / img.naturalHeight);
-    const sw = p.w / scale, sh = p.h / scale;
-    let sx = spec.fx * img.naturalWidth - sw / 2;
-    let sy = spec.fy * img.naturalHeight - sh / 2;
-    sx = Math.max(0, Math.min(img.naturalWidth - sw, sx));
-    sy = Math.max(0, Math.min(img.naturalHeight - sh, sy));
-    const u = (cx - p.x) / p.w, v = (cy - p.y) / p.h;
-    spec.fx = Math.min(0.98, Math.max(0.02, (sx + u * sw) / img.naturalWidth));
-    spec.fy = Math.min(0.98, Math.max(0.02, (sy + v * sh) / img.naturalHeight));
-  }
-  render();
-}
-
-function download(canvas, name) {
+function downloadPng(size) {
+  const canvas = exportCover(size, photos, state);
   canvas.toBlob((blob) => {
     if (!blob) return;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = name;
+    a.download = `last-exit-paradise-${size}.png`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }, 'image/png');
 }
 
-export function exportSize(sizeName) {
-  const canvas = exportCover(sizeName, photos, { ...state, size: sizeName });
-  download(canvas, `last-exit-paradise-${sizeName}.png`);
-  return canvas;
-}
-
-// Offscreen export hook for screenshots / automation.
-window.__exportCover = (sizeName) => exportCover(sizeName, photos, { ...state, size: sizeName || state.size });
-
-export function surpriseMe() {
-  state.layout = LAYOUTS[Math.floor(Math.random() * LAYOUTS.length)];
-  const grades = Object.keys(GRADES);
-  state.grade = grades[Math.floor(Math.random() * grades.length)];
-  const titles = ['LAST EXIT\nPARADISE', 'PALM FEVER\nNIGHTS', 'SUNDOWN\nRACKET', 'NEON TIDE\nGETAWAY'];
-  state.title = titles[Math.floor(Math.random() * titles.length)];
-  state.panels.forEach((p) => { p.photo = Math.random() < 0.5 ? 'A' : 'B'; });
-  render();
-}
-
-function bindUpload(inputId, slot) {
-  const input = $(inputId);
-  if (!input) return;
-  input.addEventListener('change', async () => {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    try { photos[slot] = await loadImage(url); guessFace(slot); render(); }
-    catch { alert('Could not read that photo.'); }
-  });
-}
-
-export function initEditor() {
-  bindUpload('uploadA', 'A');
-  bindUpload('uploadB', 'B');
-  const sampleA = $('sampleA'); if (sampleA) sampleA.addEventListener('click', () => loadSample('A', 'boulevard.jpg'));
-  const sampleB = $('sampleB'); if (sampleB) sampleB.addEventListener('click', () => loadSample('B', 'pier.jpg'));
-  const sampleA2 = $('sampleA2'); if (sampleA2) sampleA2.addEventListener('click', () => loadSample('A', 'pier.jpg'));
-  const sampleB2 = $('sampleB2'); if (sampleB2) sampleB2.addEventListener('click', () => loadSample('B', 'boulevard.jpg'));
-  [['layout', 'layout'], ['grade', 'grade'], ['size', 'size']].forEach(([id, key]) => {
-    const el = $(id); if (el) el.addEventListener('change', () => { state[key] = el.value; render(); });
-  });
-  [['title', 'title'], ['subtitle', 'subtitle'], ['tagline', 'tagline']].forEach(([id, key]) => {
-    const el = $(id); if (el) el.addEventListener('input', () => { state[key] = el.value; render(); });
-  });
+export function render() {
   const canvas = $('cover');
-  if (canvas) canvas.addEventListener('click', onPreviewClick);
-  const surprise = $('surprise'); if (surprise) surprise.addEventListener('click', surpriseMe);
-  document.querySelectorAll('[data-export]').forEach((btn) => {
-    btn.addEventListener('click', () => exportSize(btn.dataset.export));
+  drawCover(canvas, photos, state);
+  const panel = state.panels[selectedPanel];
+  $('focalReadout').textContent = `Panel ${selectedPanel + 1} of ${state.panels.length} — click the cover to move its focal point`;
+  $('hint').textContent = `focal ${panel.fx.toFixed(2)} · ${panel.fy.toFixed(2)} · photo ${panel.photo}`;
+  document.querySelectorAll('#panelList .panel-row').forEach((row, i) => {
+    row.classList.toggle('selected', i === selectedPanel);
+    const f = row.querySelector('.panel-focal');
+    const p = state.panels[i];
+    if (f) f.textContent = `focal ${p.fx.toFixed(2)} · ${p.fy.toFixed(2)} · photo ${p.photo}`;
   });
-  // Load both samples by default so the editor is never empty.
-  Promise.all([loadSample('A', 'boulevard.jpg'), loadSample('B', 'pier.jpg')]).then(render).catch(render);
+}
+
+export async function initEditor() {
+  buildPicker($('layoutPicker'), LAYOUTS.map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) })), state.layout, (v) => {
+    state.layout = v;
+    render();
+  });
+  buildPicker($('gradePicker'), Object.keys(GRADES).map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) })), state.grade, (v) => {
+    state.grade = v;
+    render();
+  });
+  buildPicker($('sizePicker'), Object.keys(SIZES).map((v) => ({ value: v, label: SIZES[v].label })), state.size, (v) => {
+    state.size = v;
+    render();
+  });
+  buildPanelList();
+
+  $('titleInput').addEventListener('input', (e) => {
+    state.title = e.target.value;
+    render();
+  });
+  $('subtitleInput').addEventListener('input', (e) => {
+    state.subtitle = e.target.value;
+    render();
+  });
+  $('taglineInput').addEventListener('input', (e) => {
+    state.tagline = e.target.value;
+    render();
+  });
+  $('photoA').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    photos.A = await loadImage(URL.createObjectURL(file));
+    guessFace('A');
+    render();
+  });
+  $('photoB').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    photos.B = await loadImage(URL.createObjectURL(file));
+    guessFace('B');
+    render();
+  });
+  document.querySelectorAll('[data-slot][data-photo]').forEach((btn) => {
+    btn.addEventListener('click', () => loadSample(btn.dataset.slot, btn.dataset.photo));
+  });
+
+  const exportBtns = $('exportBtns');
+  exportBtns.innerHTML = '';
+  Object.keys(SIZES).forEach((size) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = SIZES[size].label;
+    b.addEventListener('click', () => downloadPng(size));
+    exportBtns.appendChild(b);
+  });
+
+  $('surpriseBtn').addEventListener('click', () => {
+    state.layout = LAYOUTS[Math.floor(Math.random() * LAYOUTS.length)];
+    state.grade = Object.keys(GRADES)[Math.floor(Math.random() * Object.keys(GRADES).length)];
+    state.panels.forEach((p) => {
+      p.photo = Math.random() < 0.5 ? 'A' : 'B';
+    });
+    buildPicker($('layoutPicker'), LAYOUTS.map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) })), state.layout, (v) => {
+      state.layout = v;
+      render();
+    });
+    buildPicker($('gradePicker'), Object.keys(GRADES).map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) })), state.grade, (v) => {
+      state.grade = v;
+      render();
+    });
+    render();
+  });
+
+  $('cover').addEventListener('click', (e) => {
+    const canvas = $('cover');
+    const box = canvas.getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * canvas.width;
+    const y = ((e.clientY - box.top) / box.height) * canvas.height;
+    const rects = layoutPanels(state.size, state.layout);
+    const hit = rects.findIndex((r) => pointInPanel(x, y, r));
+    if (hit < 0) return;
+    selectedPanel = hit;
+    const panel = state.panels[hit];
+    const img = photos[panel.photo];
+    if (!img) return;
+    const rect = rects[hit];
+    const f = clickToFocal(img, rect, panel, x - rect.x, y - rect.y);
+    panel.fx = f.fx;
+    panel.fy = f.fy;
+    render();
+  });
+
+  window.__exportCover = (size) => exportCover(size, photos, state);
+  try {
+    await document.fonts.ready;
+  } catch { /* fonts are local; a miss still renders */ }
   render();
 }

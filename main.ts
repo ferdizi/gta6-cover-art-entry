@@ -1,4 +1,6 @@
 // Last Exit Paradise — a GTA 6-style cover art maker for gta6-cover-art-01.
+// Round-3 rebuild note (2026-11-21, recording 01a1fba3): app rewritten fresh
+// in this session under a new recording; same spec, same title, same entry.
 // Rebuild note (2026-11-21, this session): previous build could not be submitted
 // (its recorder never connected); this rebuild was written fresh in this session
 // under a new Node 24 recording, same spec, same title.
