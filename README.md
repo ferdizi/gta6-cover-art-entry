@@ -15,6 +15,14 @@ An entry for the [gta6-cover-art-01 bounty on make.fun](https://make.fun/bounty/
 - **Face-aware crops** — click the cover to move a panel's focal point; a skin-tone centroid gives a first-guess face position on upload.
 - **6 grades** (sunset, neon, golden, vice, teal, noir) and **true reflow export** in 1080×1080, 1080×1350 and 1920×1080 — panels and title are re-laid-out per size, never just cropped.
 
+## How it works
+
+Everything is plain client-side JavaScript on a `<canvas>` — no build step, no server, no network calls at runtime.
+
+- **Renderer** (`app/src/cover.js`) — `drawCover(canvas, photos, state)` draws the whole poster from a state object: it lays out the panels for the chosen layout and size, applies the grade with canvas filters and a colour wash, then paints the route line, chrome title, ribbon, press bar, billing block, barcode and seal in that order. `exportCover(size)` re-runs the same renderer at 1080×1080, 1080×1350 or 1920×1080, so each size is a true reflow rather than a crop.
+- **Editor** (`app/src/main.js`) — the sunset-styled page around the canvas: two photo slots (upload or the built-in samples), click-to-set focal points, an editable panel list (role, photo A/B, focal readout), and pickers for layout, grade and size. A skin-tone centroid gives the first-guess face position for each uploaded photo.
+- **Export** — the editor downloads a PNG per size straight from the canvas (`canvas.toBlob`), and `window.__exportCover` exposes the same renderer for scripted screenshots via `app/src/shots.js` (`?shot=cover&size=…`).
+
 ## Run it
 
 Static files only, works offline in desktop Chrome. Serve `app/`:
