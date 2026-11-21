@@ -34,6 +34,17 @@ node serve.ts
 
 Or open `app/index.html` directly. Deterministic views for screenshots: `?shot=cover&size=landscape&photo=boulevard`, `?shot=editor`, `?shot=cover&size=portrait`, `?shot=cover&size=square&layout=grid&grade=neon`.
 
+## Covers
+
+Four built-in views, rendered by the app itself:
+
+- **Coast / sunset** — the landscape cover (1920×1080), slanted coast layout in the sunset grade.
+- **Editor preview** — the sunset editor with both sample photos loaded.
+- **Portrait grid / neon** — the cover reflowed to 1080×1350 in the grid layout and neon grade.
+- **Square grid / neon** — the grid layout in neon at 1080×1080.
+
+All three export sizes are true reflows: 1080×1080, 1080×1350 and 1920×1080.
+
 ## Screenshots
 
 The four screenshots in `screenshots/` are the app's own exports: the landscape cover, the editor with both samples loaded, the portrait reflow and the square grid/neon cover.
